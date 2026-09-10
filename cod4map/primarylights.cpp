@@ -187,7 +187,7 @@ void SetupPrimaryLights( void )
         }
         else
         {
-            light.cosHalfFovOuter = cos( fovOuter * DEG2RAD * 0.5 );
+            light.cosHalfFovOuter = cos( ( float )( fovOuter * DEG2RAD * 0.5f ) );
             if ( light.cosHalfFovOuter <= 0.0 )
             {
                 PrimaryLight_Error( ent, light.dir,
@@ -205,7 +205,7 @@ void SetupPrimaryLights( void )
         {
             light.type            = GFX_LIGHT_TYPE_SPOT;
             fovInner              = FloatForKey( ent, "fov_inner" );
-            light.cosHalfFovInner = cos( fovInner * DEG2RAD * 0.5 );
+            light.cosHalfFovInner = cos( ( float )( fovInner * DEG2RAD * 0.5f ) );
             if ( light.cosHalfFovOuter > light.cosHalfFovInner )
             {
                 PrimaryLight_Error( ent, light.dir,
@@ -218,7 +218,7 @@ void SetupPrimaryLights( void )
         {
             light.type            = GFX_LIGHT_TYPE_OMNI;
             fovInner              = FloatForKey( ent, "fov_inner" );
-            light.cosHalfFovInner = cos( fovInner * DEG2RAD * 0.5 );
+            light.cosHalfFovInner = cos( ( float )( fovInner * DEG2RAD * 0.5f ) );
             if ( light.cosHalfFovOuter > light.cosHalfFovInner )
                 light.cosHalfFovInner = light.cosHalfFovOuter * 0.75 + 0.25;
             *( int * )&light.cosHalfFovExpanded = 0;
@@ -229,7 +229,7 @@ void SetupPrimaryLights( void )
             light.translationLimit = FloatForKey( ent, "maxmove" );
             maxturn                = FloatForKey( ent, "maxturn" );
             maxturn                = I_fclamp( maxturn, 0.0f, 180.0f );
-            light.rotationLimit    = cos( maxturn * DEG2RAD );
+            light.rotationLimit    = cos( ( float )( maxturn * DEG2RAD ) );
         }
         else
         {
@@ -802,10 +802,10 @@ void AssignPrimaryLightsToSurface( TriSurf_t *surf )
 
     scale    = 1.0f;
     invScale = 1.0f / scale;
-    startX   = floor( mins[0] * scale );
-    startY   = floor( mins[1] * scale );
-    countX   = ( int )( ceil( maxs[0] * scale ) - startX );
-    countY   = ( int )( ceil( maxs[1] * scale ) - startY );
+    startX   = floorf( mins[0] * scale );
+    startY   = floorf( mins[1] * scale );
+    countX   = ( int )( ceilf( maxs[0] * scale ) - startX );
+    countY   = ( int )( ceilf( maxs[1] * scale ) - startY );
 
     memset( &ctx, 0, sizeof( ctx ) );
     ctx.surf = surf;

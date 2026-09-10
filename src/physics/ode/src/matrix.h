@@ -1,4 +1,4 @@
-/* Original: ..\src\physics\ode\src\matrix.cpp (upstream: ode\include\ode\matrix.h + odemath.h). */
+/* Original: ..\src\physics\ode\src\matrix.cpp */
 
 #ifndef ODE_MATRIX_H
 #define ODE_MATRIX_H

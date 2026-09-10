@@ -1,100 +1,4 @@
-/* -------------------------------------------------------------------------------
-
-unzip.c - minizip's read-only .zip reader, as CoD uses it for .iwd archives
-
-Reconstructed from cod4map.exe (Call of Duty 4 mod tools, MSVC 8.0, 2007-11-28).
-Original path: ..\src\zlib\unzip.c   (declarations: ..\src\zlib\unzip.h)
-
-WHICH MINIZIP
--------------
-Exactly.  The `unz_copyright` guard string still sits in .rdata at 0x005100d8:
-
-        " unzip 0.15 Copyright 1998 Gilles Vollant "
-
-and unzOpen (0x0048bfc0) still opens with `if (unz_copyright[0]!=' ') return NULL;`
-(0x0048bfd2: movsx eax,byte ptr ds:0x5100d8 / cmp eax,0x20 / jne -> return 0).
-So this is **minizip 0.15**, the FILE*-based release that shipped alongside
-zlib 1.1.4 -- not the later ioapi/zip64 minizip.  Every function below is stock
-0.15 except where a comment says otherwise.
-
-WHAT ID CHANGED
----------------
-1. Byte-at-a-time I/O replaced by raw little-endian reads.  0.15 built a short
-   out of two unzlocal_getByte calls; here unzlocal_getShort (0x0048c1e0) is
-   literally `fread(&v,1,2,fin)` + sign-extending store, and unzlocal_getLong
-   (0x0048c210) is `fread(&v,1,4,fin)`.  There is no unzlocal_getByte in the
-   binary at all.  (Same edit Quake 3 made; the sign extension of the `short`
-   is visible as `movsx edx,word ptr [ebp-4]`.)
-
-2. Every `fread( p, n, 1, f ) != 1` became `fread( p, 1, n, f ) != n` -- the
-   pushed arguments are (ptr, 1, count, file) at every call site.
-
-3. All fseek()s go through fseek_file_func (0x0048d5a0), which maps a private
-   origin enum onto the CRT's.  The mapping is proven by the compare chain at
-   0x0048d5ac: origin 0 -> SEEK_CUR(1), 1 -> SEEK_END(2), 2 -> SEEK_SET(0), and
-   an unknown origin returns 0 *without seeking*.  Note that this is NOT the
-   ZLIB_FILEFUNC_SEEK_* numbering from the later minizip's ioapi.h (which is
-   CUR=1, END=2, SET=0) -- CoD renumbered them 0/1/2, and com_files.h's
-   FS_SEEK_CUR/END/SET use the same 0/1/2 order.
-
-4. unzlocal_SearchCentralDir gets the file length from a helper
-   (0x0048d600) that saves the position, seeks to the end, ftells and seeks
-   back, instead of doing `fseek(fin,0,SEEK_END); uSizeFile=ftell(fin);` inline.
-
-5. The CRC check is GONE.  file_in_zip_read_info_s is malloc(0x60) and its
-   fields run rest_read_compressed at +0x4c, rest_read_uncompressed at +0x50 --
-   i.e. the `crc32` / `crc32_wait` pair that 0.15 keeps between
-   pos_local_extrafield and rest_read_compressed is not there, unzReadCurrentFile
-   never calls crc32(), and unzCloseCurrentFile has no UNZ_CRCERROR path.
-
-6. ALLOC/TRYFREE are plain malloc/free: the frees in unzClose (0x0048c3fa) and
-   unzCloseCurrentFile (0x0048d49c, 0x0048d4d3) have no NULL test in front of
-   them, so TRYFREE is `{free(p);}`, not 0.15's `{if (p) free(p);}`.
-
-7. Three functions added for the CoD filesystem:
-        unzReOpen                       0x0048bf50
-        unzGetCurrentFileInfoPosition   0x0048ca70
-        unzSetCurrentFileInfoPosition   0x0048caa0
-   and `unz_s` was promoted out of here into unzip.h, because
-   FS_FOpenFileReadForThread memcpy()s a whole unz_s between handles.
-
-FUNCTION MAP (address -> name)
-------------------------------
-    0x0048be60  unzStringFileNameCompare
-    0x0048bea0  strcmpcasenosensitive_internal
-    0x0048bf50  unzReOpen                               (id addition)
-    0x0048bfc0  unzOpen
-    0x0048c1e0  unzlocal_getShort
-    0x0048c210  unzlocal_getLong
-    0x0048c240  unzlocal_SearchCentralDir
-    0x0048c3c0  unzClose
-    0x0048c410  unzGetGlobalInfo
-    0x0048c440  unzGetCurrentFileInfo
-    0x0048c470  unzlocal_GetCurrentFileInfoInternal
-    0x0048c8b0  unzlocal_DosDateToTmuDate
-    0x0048c930  unzGoToFirstFile
-    0x0048c9b0  unzGoToNextFile
-    0x0048ca70  unzGetCurrentFileInfoPosition           (id addition)
-    0x0048caa0  unzSetCurrentFileInfoPosition           (id addition)
-    0x0048cb00  unzLocateFile
-    0x0048cc00  unzOpenCurrentFile
-    0x0048cdd0  unzlocal_CheckCurrentFileCoherencyHeader
-    0x0048d050  unzReadCurrentFile
-    0x0048d310  unztell
-    0x0048d350  unzeof
-    0x0048d3a0  unzGetLocalExtrafield
-    0x0048d460  unzCloseCurrentFile
-    0x0048d4f0  unzGetGlobalComment
-    0x0048d5a0  fseek_file_func
-    0x0048d600  unzlocal_GetFileSize                    (name UNCERTAIN)
-
-The functions are written below in that address order.  MSVC's /Gy COMDATs let
-the linker pick the layout, so the address order is not proof of source order --
-but nothing in the output depends on it, and it is the only ordering the binary
-actually attests to.  The static helpers are forward-declared at the top so the
-order compiles as written.
-
-------------------------------------------------------------------------------- */
+/* Original: ..\src\zlib\unzip.c */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -107,17 +11,12 @@ order compiles as written.
 #  define local static
 #endif
 
-/* The guard unzOpen tests before it will touch a file.  Do not "clean this up";
-   the check at 0x0048bfd2 is real code.  (0x005100d8) */
+/* unz_copyright  0x005100d8 */
 const char unz_copyright[] =
    " unzip 0.15 Copyright 1998 Gilles Vollant ";
 
-/* size of the read buffer used by unzReadCurrentFile -- malloc( 0x4000 ) at
-   0x0048cc4b, and the same value caps uReadThis at 0x0048d13c. */
 #define UNZ_BUFSIZE             (16384)
 
-/* unzLocateFile rejects names >= this and passes ( sizeof( buf ) - 1 ) == 256
-   as the filename buffer size (0x0048cb2e / 0x0048cb85). */
 #define UNZ_MAXFILENAMEINZIP    (256)
 
 #define ALLOC( size )   (malloc( size ))
@@ -126,52 +25,33 @@ const char unz_copyright[] =
 #define SIZECENTRALDIRITEM      (0x2e)
 #define SIZEZIPLOCALHEADER      (0x1e)
 
-/* backwards-scan window used to find the end-of-central-directory record --
-   malloc( BUFREADCOMMENT + 4 ) == malloc( 0x404 ) at 0x0048c27b. */
 #define BUFREADCOMMENT          (0x400)
 
-/* iCaseSensitivity == 0 means "the platform default"; on Windows that is 2,
-   i.e. case-insensitive.  0x0048be6b substitutes 2. */
 #define CASESENSITIVITYDEFAULTVALUE (2)
 
-/* Origins understood by fseek_file_func.  Proven by the compare chain at
-   0x0048d5ac -- see the header comment. */
 #define ZLIB_FILEFUNC_SEEK_CUR  (0)
 #define ZLIB_FILEFUNC_SEEK_END  (1)
 #define ZLIB_FILEFUNC_SEEK_SET  (2)
 
-/* -------------------------------------------------------------------------------
-   the state of the one file that is currently open for reading inside an archive
-
-   sizeof == 0x60, from malloc( 0x60 ) at 0x0048cc31.  Every offset below is a
-   store or load in unzOpenCurrentFile / unzReadCurrentFile / unzCloseCurrentFile.
-   Note that `stream` is 0x34 bytes here, not 0x38: cod4map's zlib.h drops the
-   trailing `uLong reserved` from z_stream, which is why inflateInit2_ (0x00487390)
-   tests `stream_size == 0x34` and pos_in_zipfile lands at +0x38.  With a stock
-   1.2.x zlib.h the struct is four bytes longer; nothing but sizeof cares.
-------------------------------------------------------------------------------- */
 typedef struct
 {
-    char         *read_buffer;              /* +0x00  UNZ_BUFSIZE bytes of raw zip data */
-    z_stream      stream;                   /* +0x04  inflate state                     */
+    char         *read_buffer;              /* +0x00 */
+    z_stream      stream;                   /* +0x04 */
 
-    uLong         pos_in_zipfile;           /* +0x38  where read_buffer was filled from  */
-    uLong         stream_initialised;       /* +0x3c  inflateInit2 succeeded             */
+    uLong         pos_in_zipfile;           /* +0x38 */
+    uLong         stream_initialised;       /* +0x3c */
 
     uLong         offset_local_extrafield;  /* +0x40 */
     uInt          size_local_extrafield;    /* +0x44 */
     uLong         pos_local_extrafield;     /* +0x48 */
 
-    uLong         rest_read_compressed;     /* +0x4c  bytes left to feed inflate         */
-    uLong         rest_read_uncompressed;   /* +0x50  bytes left to hand back            */
-    FILE         *file;                     /* +0x54  the archive's stream               */
-    uLong         compression_method;       /* +0x58  0 == stored, 8 == deflated         */
-    uLong         byte_before_the_zipfile;  /* +0x5c  > 0 for a self-extracting archive  */
+    uLong         rest_read_compressed;     /* +0x4c */
+    uLong         rest_read_uncompressed;   /* +0x50 */
+    FILE         *file;                     /* +0x54 */
+    uLong         compression_method;       /* +0x58 */
+    uLong         byte_before_the_zipfile;  /* +0x5c */
 } file_in_zip_read_info_s;                  /* sizeof == 0x60 */
 
-/* -------------------------------------------------------------------------------
-   forward declarations for the file-local helpers
-------------------------------------------------------------------------------- */
 local int   strcmpcasenosensitive_internal( const char *fileName1, const char *fileName2 );
 local int   unzlocal_getShort( FILE *fin, uLong *pX );
 local int   unzlocal_getLong( FILE *fin, uLong *pX );
@@ -194,12 +74,7 @@ local long  fseek_file_func( FILE *file, long offset, int origin );
 local long  unzlocal_GetFileSize( FILE *file );
 
 
-/* -------------------------------------------------------------------------------
-   unzStringFileNameCompare  (0x0048be60)
-
-   Compare two filenames.  iCaseSensitivity: 1 = strcmp, 2 = case-insensitive,
-   0 = whatever the platform default is (2 here).
-------------------------------------------------------------------------------- */
+/* unzStringFileNameCompare  0x0048be60 */
 int unzStringFileNameCompare( const char *fileName1, const char *fileName2, int iCaseSensitivity )
 {
     if ( iCaseSensitivity == 0 )
@@ -216,12 +91,7 @@ int unzStringFileNameCompare( const char *fileName1, const char *fileName2, int 
 }
 
 
-/* -------------------------------------------------------------------------------
-   strcmpcasenosensitive_internal  (0x0048bea0)
-
-   ASCII-only case-folding strcmp.  Deliberately not stricmp -- it must behave
-   the same on every platform the archive format is shared with.
-------------------------------------------------------------------------------- */
+/* strcmpcasenosensitive_internal  0x0048bea0 */
 local int strcmpcasenosensitive_internal( const char *fileName1, const char *fileName2 )
 {
     for ( ;; )
@@ -257,19 +127,7 @@ local int strcmpcasenosensitive_internal( const char *fileName1, const char *fil
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzReOpen  (0x0048bf50)   -- id addition, not stock minizip
-
-   Open a second, independent handle onto an archive whose central directory has
-   already been read, by cloning the state and giving the clone its own FILE *.
-   FS_FOpenFileReadForThread uses it when a second reader wants a file out of an
-   archive that already has one open.
-
-   NOTE the original calls Com_Memcpy (0x004762c0, com_shared.cpp) here rather
-   than memcpy.  Com_Memcpy is two asserts plus a memcpy, and com_shared.cpp is
-   compiled as C++ while this file is compiled as C, so the mangled symbol is not
-   reachable from here -- plain memcpy is used instead.  Same bytes copied.
-------------------------------------------------------------------------------- */
+/* unzReOpen  0x0048bf50 */
 unzFile unzReOpen( const char *path, unzFile file )
 {
     unz_s *s;
@@ -291,13 +149,7 @@ unzFile unzReOpen( const char *path, unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzOpen  (0x0048bfc0)
-
-   Open a .zip/.iwd, locate and validate the end-of-central-directory record, and
-   leave the handle sitting on the first entry.  Returns NULL if the file is not
-   a single-disk zip.
-------------------------------------------------------------------------------- */
+/* unzOpen  0x0048bfc0 */
 unzFile unzOpen( const char *path )
 {
     unz_s  us;
@@ -305,9 +157,9 @@ unzFile unzOpen( const char *path )
     uLong  central_pos, uL;
     FILE  *fin;
 
-    uLong  number_disk;             /* number of the current disk, used for spanning */
-    uLong  number_disk_with_CD;     /* number of the disk with central dir           */
-    uLong  number_entry_CD;         /* total number of entries in the central dir    */
+    uLong  number_disk;
+    uLong  number_disk_with_CD;
+    uLong  number_entry_CD;
     int    err = UNZ_OK;
 
     if ( unz_copyright[0] != ' ' )
@@ -332,31 +184,26 @@ unzFile unzOpen( const char *path )
         err = UNZ_ERRNO;
     }
 
-    /* the signature, already checked */
     if ( unzlocal_getLong( fin, &uL ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* number of this disk */
     if ( unzlocal_getShort( fin, &number_disk ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* number of the disk with the start of the central directory */
     if ( unzlocal_getShort( fin, &number_disk_with_CD ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* total number of entries in the central dir on this disk */
     if ( unzlocal_getShort( fin, &us.gi.number_entry ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* total number of entries in the central dir */
     if ( unzlocal_getShort( fin, &number_entry_CD ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
@@ -369,19 +216,16 @@ unzFile unzOpen( const char *path )
         err = UNZ_BADZIPFILE;
     }
 
-    /* size of the central directory */
     if ( unzlocal_getLong( fin, &us.size_central_dir ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* offset of start of central directory with respect to the starting disk */
     if ( unzlocal_getLong( fin, &us.offset_central_dir ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    /* zipfile comment length */
     if ( unzlocal_getShort( fin, &us.gi.size_comment ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
@@ -412,14 +256,7 @@ unzFile unzOpen( const char *path )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_getShort  (0x0048c1e0)
-
-   Read a 16-bit little-endian field.  The value is read into a *signed* short and
-   then widened, so a field with the top bit set arrives sign-extended -- that is
-   what the `movsx` at 0x0048c1f8 does, and it is deliberate in the CoD/Q3 edit of
-   minizip (all the fields it is used on are small).
-------------------------------------------------------------------------------- */
+/* unzlocal_getShort  0x0048c1e0 */
 local int unzlocal_getShort( FILE *fin, uLong *pX )
 {
     short v;
@@ -431,11 +268,7 @@ local int unzlocal_getShort( FILE *fin, uLong *pX )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_getLong  (0x0048c210)
-
-   Read a 32-bit little-endian field.
-------------------------------------------------------------------------------- */
+/* unzlocal_getLong  0x0048c210 */
 local int unzlocal_getLong( FILE *fin, uLong *pX )
 {
     int v;
@@ -447,19 +280,13 @@ local int unzlocal_getLong( FILE *fin, uLong *pX )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_SearchCentralDir  (0x0048c240)
-
-   Scan backwards from the end of the file, BUFREADCOMMENT bytes at a time, for
-   the "PK\5\6" end-of-central-directory signature.  Returns its absolute offset,
-   or 0 if the file has none within the last 64K.
-------------------------------------------------------------------------------- */
+/* unzlocal_SearchCentralDir  0x0048c240 */
 local uLong unzlocal_SearchCentralDir( FILE *fin )
 {
     unsigned char *buf;
     uLong          uSizeFile;
     uLong          uBackRead;
-    uLong          uMaxBack = 0xffff;   /* maximum size of global comment */
+    uLong          uMaxBack = 0xffff;
     uLong          uPosFound = 0;
 
     uSizeFile = unzlocal_GetFileSize( fin );
@@ -525,12 +352,7 @@ local uLong unzlocal_SearchCentralDir( FILE *fin )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzClose  (0x0048c3c0)
-
-   Close an archive opened by unzOpen or unzReOpen.  Any file left open inside it
-   is closed first.
-------------------------------------------------------------------------------- */
+/* unzClose  0x0048c3c0 */
 int unzClose( unzFile file )
 {
     unz_s *s;
@@ -552,11 +374,7 @@ int unzClose( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGetGlobalInfo  (0x0048c410)
-
-   Hand back the entry count and comment length read out of the EOCD record.
-------------------------------------------------------------------------------- */
+/* unzGetGlobalInfo  0x0048c410 */
 int unzGetGlobalInfo( unzFile file, unz_global_info *pglobal_info )
 {
     unz_s *s;
@@ -572,12 +390,7 @@ int unzGetGlobalInfo( unzFile file, unz_global_info *pglobal_info )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGetCurrentFileInfo  (0x0048c440)
-
-   Public wrapper: read the central-directory entry the handle is sitting on.
-   Any of the output pointers may be NULL.
-------------------------------------------------------------------------------- */
+/* unzGetCurrentFileInfo  0x0048c440 */
 int unzGetCurrentFileInfo( unzFile file,
                            unz_file_info *pfile_info,
                            char *szFileName,
@@ -594,14 +407,7 @@ int unzGetCurrentFileInfo( unzFile file,
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_GetCurrentFileInfoInternal  (0x0048c470)
-
-   The real central-directory reader.  Reads the 0x2e-byte fixed part at
-   s->pos_in_central_dir, then optionally copies out the filename, the extra
-   field and the comment, seeking over whatever the caller did not ask for.
-   `lSeek` carries the number of bytes still to be skipped between blocks.
-------------------------------------------------------------------------------- */
+/* unzlocal_GetCurrentFileInfoInternal  0x0048c470 */
 local int unzlocal_GetCurrentFileInfoInternal( unzFile file,
                                                unz_file_info *pfile_info,
                                                unz_file_info_internal *pfile_info_internal,
@@ -632,7 +438,6 @@ local int unzlocal_GetCurrentFileInfoInternal( unzFile file,
         err = UNZ_ERRNO;
     }
 
-    /* we check the magic */
     if ( err == UNZ_OK )
     {
         if ( unzlocal_getLong( s->file, &uMagic ) != UNZ_OK )
@@ -840,11 +645,7 @@ local int unzlocal_GetCurrentFileInfoInternal( unzFile file,
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_DosDateToTmuDate  (0x0048c8b0)
-
-   Split a packed MS-DOS date/time dword into a tm_unz.
-------------------------------------------------------------------------------- */
+/* unzlocal_DosDateToTmuDate  0x0048c8b0 */
 local void unzlocal_DosDateToTmuDate( uLong ulDosDate, tm_unz *ptm )
 {
     uLong uDate;
@@ -861,11 +662,7 @@ local void unzlocal_DosDateToTmuDate( uLong ulDosDate, tm_unz *ptm )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGoToFirstFile  (0x0048c930)
-
-   Rewind to the first entry of the central directory.
-------------------------------------------------------------------------------- */
+/* unzGoToFirstFile  0x0048c930 */
 int unzGoToFirstFile( unzFile file )
 {
     int    err;
@@ -887,11 +684,7 @@ int unzGoToFirstFile( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGoToNextFile  (0x0048c9b0)
-
-   Step to the next entry.  Returns UNZ_END_OF_LIST_OF_FILE past the last one.
-------------------------------------------------------------------------------- */
+/* unzGoToNextFile  0x0048c9b0 */
 int unzGoToNextFile( unzFile file )
 {
     unz_s *s;
@@ -923,13 +716,7 @@ int unzGoToNextFile( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGetCurrentFileInfoPosition  (0x0048ca70)   -- id addition
-
-   Hand out the central-directory offset of the current entry, so the caller can
-   come back to it later without re-walking the directory.  This is the cookie
-   com_files.cpp stores in fileInIwd_t::pos.
-------------------------------------------------------------------------------- */
+/* unzGetCurrentFileInfoPosition  0x0048ca70 */
 int unzGetCurrentFileInfoPosition( unzFile file, unsigned long *pos )
 {
     unz_s *s;
@@ -945,16 +732,7 @@ int unzGetCurrentFileInfoPosition( unzFile file, unsigned long *pos )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzSetCurrentFileInfoPosition  (0x0048caa0)   -- id addition
-
-   Jump straight to a central-directory entry previously reported by
-   unzGetCurrentFileInfoPosition and re-read it.
-
-   NOTE it returns UNZ_OK even when the re-read failed; the caller is expected to
-   look at current_file_ok (or simply at the next unzOpenCurrentFile).  That is
-   what the binary does -- 0x0048caf3 loads a literal 0 into eax.
-------------------------------------------------------------------------------- */
+/* unzSetCurrentFileInfoPosition  0x0048caa0 */
 int unzSetCurrentFileInfoPosition( unzFile file, unsigned long pos )
 {
     unz_s *s;
@@ -975,12 +753,7 @@ int unzSetCurrentFileInfoPosition( unzFile file, unsigned long pos )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzLocateFile  (0x0048cb00)
-
-   Linear search of the central directory for a name.  On failure the handle is
-   put back where it was.
-------------------------------------------------------------------------------- */
+/* unzLocateFile  0x0048cb00 */
 int unzLocateFile( unzFile file, const char *szFileName, int iCaseSensitivity )
 {
     unz_s *s;
@@ -1030,17 +803,7 @@ int unzLocateFile( unzFile file, const char *szFileName, int iCaseSensitivity )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzOpenCurrentFile  (0x0048cc00)
-
-   Get ready to read the entry the handle is sitting on: validate the local
-   header, allocate the read buffer and, for a deflated entry, spin up a raw
-   inflate stream (windowBits negative => no zlib header, no adler check).
-
-   NOTE that `err` is dead: an unsupported compression method sets it to
-   UNZ_BADZIPFILE but the function still returns UNZ_OK.  That is stock minizip
-   0.15 behaviour and the binary keeps it (0x0048cdc6 xor eax,eax).
-------------------------------------------------------------------------------- */
+/* unzOpenCurrentFile  0x0048cc00 */
 int unzOpenCurrentFile( unzFile file )
 {
     int    err = UNZ_OK;
@@ -1048,8 +811,8 @@ int unzOpenCurrentFile( unzFile file )
     uInt   iSizeVar;
     unz_s *s;
     file_in_zip_read_info_s *pfile_in_zip_read_info;
-    uLong  offset_local_extrafield;  /* offset of the local extra field */
-    uInt   size_local_extrafield;    /* size of the local extra field   */
+    uLong  offset_local_extrafield;
+    uInt   size_local_extrafield;
 
     if ( file == NULL )
     {
@@ -1116,11 +879,6 @@ int unzOpenCurrentFile( unzFile file )
         {
             pfile_in_zip_read_info->stream_initialised = 1;
         }
-        /* windowBits is passed < 0 to tell that there is no zlib header.
-           Note that in this case inflate *requires* an extra "dummy" byte
-           after the compressed stream in order to complete inflation and
-           return Z_STREAM_END.  In unzip, i don't wait absolutely Z_STREAM_END
-           because i known the size of both compressed and uncompressed data */
     }
 
     pfile_in_zip_read_info->rest_read_compressed = s->cur_file_info.compressed_size;
@@ -1137,14 +895,7 @@ int unzOpenCurrentFile( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_CheckCurrentFileCoherencyHeader  (0x0048cdd0)
-
-   Read the entry's local header and check it against what the central directory
-   said.  Fields covered by the "sizes in the data descriptor" flag (bit 3) are
-   not compared.  Returns, through the out-parameters, how many bytes of variable
-   header sit between the fixed part and the data.
-------------------------------------------------------------------------------- */
+/* unzlocal_CheckCurrentFileCoherencyHeader  0x0048cdd0 */
 local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
                                                     uInt *piSizeVar,
                                                     uLong *poffset_local_extrafield,
@@ -1182,10 +933,6 @@ local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
     {
         err = UNZ_ERRNO;
     }
-/*
-    else if ( ( err == UNZ_OK ) && ( uData != s->cur_file_info.wVersion ) )
-        err = UNZ_BADZIPFILE;
-*/
 
     if ( unzlocal_getShort( s->file, &uFlags ) != UNZ_OK )
     {
@@ -1207,12 +954,12 @@ local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
         err = UNZ_BADZIPFILE;
     }
 
-    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )        /* date/time */
+    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
 
-    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )        /* crc */
+    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
@@ -1222,7 +969,7 @@ local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
         err = UNZ_BADZIPFILE;
     }
 
-    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )        /* size compr */
+    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
@@ -1232,7 +979,7 @@ local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
         err = UNZ_BADZIPFILE;
     }
 
-    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )        /* size uncompr */
+    if ( unzlocal_getLong( s->file, &uData ) != UNZ_OK )
     {
         err = UNZ_ERRNO;
     }
@@ -1267,13 +1014,7 @@ local int unzlocal_CheckCurrentFileCoherencyHeader( unz_s *s,
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzReadCurrentFile  (0x0048d050)
-
-   Read up to `len` bytes out of the open entry.  Returns the byte count, 0 at
-   end of file, or a negative UNZ_/Z_ error.  A stored entry is memcpy'd out of
-   the read buffer; a deflated one goes through inflate() with Z_SYNC_FLUSH.
-------------------------------------------------------------------------------- */
+/* unzReadCurrentFile  0x0048d050 */
 int unzReadCurrentFile( unzFile file, void *buf, unsigned len )
 {
     int    err = UNZ_OK;
@@ -1407,11 +1148,7 @@ int unzReadCurrentFile( unzFile file, void *buf, unsigned len )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unztell  (0x0048d310)
-
-   Byte offset within the *uncompressed* entry.
-------------------------------------------------------------------------------- */
+/* unztell  0x0048d310 */
 long unztell( unzFile file )
 {
     unz_s *s;
@@ -1433,11 +1170,7 @@ long unztell( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzeof  (0x0048d350)
-
-   1 once the whole entry has been handed back.
-------------------------------------------------------------------------------- */
+/* unzeof  0x0048d350 */
 int unzeof( unzFile file )
 {
     unz_s *s;
@@ -1466,16 +1199,7 @@ int unzeof( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGetLocalExtrafield  (0x0048d3a0)
-
-   Copy out the entry's *local*-header extra field (which is not always the same
-   as the central directory's).  With buf == NULL it just reports the size.
-
-   NOTE the fread asks for size_to_read bytes, not read_now -- i.e. it can
-   overrun a short buffer.  That is what 0.15 does and what the binary does
-   (0x0048d425 pushes the size_to_read local), so it is left alone.
-------------------------------------------------------------------------------- */
+/* unzGetLocalExtrafield  0x0048d3a0 */
 int unzGetLocalExtrafield( unzFile file, void *buf, unsigned len )
 {
     unz_s *s;
@@ -1534,12 +1258,7 @@ int unzGetLocalExtrafield( unzFile file, void *buf, unsigned len )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzCloseCurrentFile  (0x0048d460)
-
-   Tear down the open entry.  The stock 0.15 CRC comparison that would return
-   UNZ_CRCERROR here is absent from the binary, so `err` can only ever be UNZ_OK.
-------------------------------------------------------------------------------- */
+/* unzCloseCurrentFile  0x0048d460 */
 int unzCloseCurrentFile( unzFile file )
 {
     int    err = UNZ_OK;
@@ -1575,11 +1294,7 @@ int unzCloseCurrentFile( unzFile file )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzGetGlobalComment  (0x0048d4f0)
-
-   Copy out the archive-level comment that follows the EOCD record.
-------------------------------------------------------------------------------- */
+/* unzGetGlobalComment  0x0048d4f0 */
 int unzGetGlobalComment( unzFile file, char *szComment, unsigned long uSizeBuf )
 {
     unz_s *s;
@@ -1619,14 +1334,7 @@ int unzGetGlobalComment( unzFile file, char *szComment, unsigned long uSizeBuf )
 }
 
 
-/* -------------------------------------------------------------------------------
-   fseek_file_func  (0x0048d5a0)
-
-   The one place unzip.c touches the CRT's fseek.  `origin` is one of the
-   ZLIB_FILEFUNC_SEEK_* values above, NOT a CRT SEEK_*; an unrecognised origin
-   returns 0 without seeking (i.e. it looks like success, which is stock ioapi's
-   behaviour inverted -- ioapi returns -1 -- but it is what the binary does).
-------------------------------------------------------------------------------- */
+/* fseek_file_func  0x0048d5a0 */
 local long fseek_file_func( FILE *file, long offset, int origin )
 {
     int fseek_origin;
@@ -1650,13 +1358,7 @@ local long fseek_file_func( FILE *file, long offset, int origin )
 }
 
 
-/* -------------------------------------------------------------------------------
-   unzlocal_GetFileSize  (0x0048d600)   -- name UNCERTAIN
-
-   Length of an open stream, leaving the read position where it found it.  Stock
-   0.15 does the seek-to-end inline in unzlocal_SearchCentralDir and never
-   restores the position; this helper is a CoD addition and is its only caller.
-------------------------------------------------------------------------------- */
+/* unzlocal_GetFileSize  0x0048d600 */
 local long unzlocal_GetFileSize( FILE *file )
 {
     long pos;

@@ -6,11 +6,13 @@ A source reconstruction of `cod4map.exe`, the BSP compiler from the Call of Duty
 
 - Visual Studio 2019 or later with the **x86 (32-bit) C++ toolset** installed
   (Desktop development with C++ → "MSVC ... C++ x64/x86 build tools")
+- CMake 3.21 or later
 
 ## Build
 
 ```
-build.bat
+cmake -B build -A Win32
+cmake --build build --config Release
 ```
 
 The executable is written to `bin\cod4map.exe`.

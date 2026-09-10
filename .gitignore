@@ -1,5 +1,6 @@
-obj/
+build/
 bin/
+obj/
 *.obj
 *.exe
 *.pdb

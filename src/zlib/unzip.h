@@ -1,55 +1,48 @@
-/* -------------------------------------------------------------------------------
+/* Original: ..\src\zlib\unzip.c */
 
-unzip.h - minizip's read-only .zip API, as CoD uses it for .iwd archives
+/* unzip.h -- IO for uncompress .zip files using zlib
+   Version 0.15 beta, Mar 19th, 1998,
 
-Reconstructed from cod4map.exe (Call of Duty 4 mod tools, MSVC 8.0, 2007-11-28).
-Original path: ..\src\zlib\unzip.h  (implementation: ..\src\zlib\unzip.c)
+   Copyright (C) 1998 Gilles Vollant
 
-This file exists so that com_files.cpp and ..\qcommon\com_fileAccess.h have the
-declarations they need.  Only what those two use is reconstructed; unzip.c itself
-is a separate job.
+   This unzip package allow extract file from .ZIP file, compatible with PKZip 2.04g
+     WinZip, InfoZip tools and compatible.
+   Encryption and multi volume ZipFile (span) are not supported.
+   Old compressions used by old PKZip 1.x are not supported
 
-WHAT THE BINARY SHOWS
----------------------
-cod4map uses **minizip**, not a hand-rolled zip reader, and it is the Quake 3
-lineage of minizip -- unmodified except for the three functions id added
-(unzReOpen, unzGetCurrentFileInfoPosition, unzSetCurrentFileInfoPosition) and the
-promotion of `unz_s` from unzip.c into this header, which FS_FOpenFileReadForThread
-depends on because it memcpy()s a whole unz_s from the archive's shared handle
-into the per-file-handle one.
+   THIS IS AN ALPHA VERSION. AT THIS STAGE OF DEVELOPPEMENT, SOMES API OR STRUCTURE
+   CAN CHANGE IN FUTURE VERSION !!
+   I WAIT FEEDBACK at mail info@winimage.com
+   Visit also http://www.winimage.com/zLibDll/unzip.htm for evolution
 
-Evidence:
-  * 0x0048bfc0 unzOpen -> 0x0048c240 unzlocal_SearchCentralDir scans backwards in
-    0x400-byte chunks for the "PK\5\6" end-of-central-directory signature, then
-    reads the EOCD with the byte-at-a-time helpers at 0x0048c1e0 / 0x0048c210.
-  * malloc( 0x80 ) and a 0x20-dword struct copy give sizeof( unz_s ) == 0x80,
-    which is exactly stock minizip's layout (see below).
-  * The error codes the functions return are minizip's verbatim: -100, -102,
-    -103, -104.
-  * zlib's inflate IS called directly, but from unzip.c, never from com_files.cpp:
-    unzOpenCurrentFile (0x0048cc00) calls inflateInit2_ (0x00487390) with
-    windowBits -15 and the version string "1.1.4", and unzReadCurrentFile
-    (0x0048d050) calls inflate (0x00487520) with Z_SYNC_FLUSH.  A stored (method
-    0) entry is copied straight out of the read buffer with no zlib involved.
+   Condition of use and distribution are the same than zlib :
 
-The three addresses the Ghidra dump filed under ode/mass.cpp --
-  0x0048c1e0  unzlocal_getShort( FILE *, unsigned long * )
-  0x0048c210  unzlocal_getLong ( FILE *, unsigned long * )
-  0x0048d5a0  fseek_file_func  ( FILE *, long, int )
--- are unzip.c internals, not com_files.cpp and not ODE.  They belong in
-..\src\zlib\unzip.c with the rest of the file.
+  This software is provided 'as-is', without any express or implied
+  warranty.  In no event will the authors be held liable for any damages
+  arising from the use of this software.
 
-------------------------------------------------------------------------------- */
+  Permission is granted to anyone to use this software for any purpose,
+  including commercial applications, and to alter it and redistribute it
+  freely, subject to the following restrictions:
+
+  1. The origin of this software must not be misrepresented; you must not
+     claim that you wrote the original software. If you use this software
+     in a product, an acknowledgment in the product documentation would be
+     appreciated but is not required.
+  2. Altered source versions must be plainly marked as such, and must not be
+     misrepresented as being the original software.
+  3. This notice may not be removed or altered from any source distribution.
+
+
+*/
+
+/* This is an altered version of minizip 0.15, not the original software. */
 
 #ifndef UNZIP_H
 #define UNZIP_H
 
 #include <stdio.h>
 
-/* unzip.c is compiled as C while every one of its callers (com_files.cpp,
-   ..\qcommon\com_fileAccess.h) is compiled as C++, so the linkage guard is not
-   optional -- without it MSVC looks for `?unzOpen@@YAPAXPBD@Z` and unzip.obj
-   only offers `_unzOpen`.  Stock minizip's unzip.h carries the same guard. */
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -105,11 +98,6 @@ typedef struct unz_file_info_internal_s
     unsigned long offset_curfile;       /* +0x00 */
 } unz_file_info_internal;
 
-/* The whole state of one open archive.  com_files.cpp copies this struct
-   wholesale, so the layout is load-bearing: sizeof must be 0x80, `file` must be
-   the first member, cur_file_info must start at +0x28 (so that
-   cur_file_info.uncompressed_size lands at +0x44, which is what FS_filelength
-   and FS_FOpenFileReadForThread read) and pfile_in_zip_read must be at +0x7c. */
 typedef struct
 {
     FILE                   *file;                       /* +0x00 */
@@ -143,10 +131,6 @@ int     unzCloseCurrentFile( unzFile file );                                /* 0
 int     unzReadCurrentFile( unzFile file, void *buf, unsigned len );        /* 0x0048d050 */
 long    unztell( unzFile file );                                            /* 0x0048d310 */
 
-/* The rest of minizip 0.15's public surface.  cod4map links these in but does
-   not call them from outside unzip.c in this build; they are declared here so
-   that unzip.c has a prototype in scope for every non-static function it
-   defines, and so a future caller does not have to re-derive them. */
 int     unzStringFileNameCompare( const char *fileName1, const char *fileName2,
                                   int iCaseSensitivity );                   /* 0x0048be60 */
 int     unzLocateFile( unzFile file, const char *szFileName,
@@ -156,12 +140,11 @@ int     unzGetLocalExtrafield( unzFile file, void *buf, unsigned len );     /* 0
 int     unzGetGlobalComment( unzFile file, char *szComment,
                              unsigned long uSizeBuf );                      /* 0x0048d4f0 */
 
-/* " unzip 0.15 Copyright 1998 Gilles Vollant " -- 0x005100d8.  unzOpen returns
-   NULL if its first character is not a space; that check is real code. */
+/* unz_copyright  0x005100d8 */
 extern const char unz_copyright[];
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif /* UNZIP_H */
+#endif

@@ -2750,8 +2750,13 @@ void Tris_EmitLayeredTriangle( const winding_t *w, const winding_t *wOrig,
         tri->vertIndices[0]       = triGlobVertCount;
         tri->vertIndices[1]       = triGlobVertCount + 1;
         tri->vertIndices[2]       = triGlobVertCount + 2;
-        Vec3Copy( texVecS[0], tri->texVecs[0][0] );
-        Vec3Copy( texVecT[0], tri->texVecs[0][1] );
+
+        for ( i = 0; i < lyrMtlDesc->normalMapCount; i++ )
+        {
+            layer = lyrMtlDesc->region[i];
+            Vec3Copy( texVecS[layer], tri->texVecs[layer][0] );
+            Vec3Copy( texVecT[layer], tri->texVecs[layer][1] );
+        }
     }
 
     triGlobTriCount++;
@@ -2763,9 +2768,18 @@ void Tris_EmitLayeredTriangle( const winding_t *w, const winding_t *wOrig,
 static byte Tris_LayerAlpha( const DrawSurf_t *ds, const byte color[4] )
 {
     byte tint[4];
+    int  tintSum;
+    int  colorSum;
+
+    if ( ( ds->toolFlags & TOOLFLAG_USAGE_MASK ) != TOOLFLAG_USAGE_VCOLOR )
+        return color[3];
 
     Tris_GetColorTint( ds, tint );
-    return color[3];
+
+    tintSum  = tint[2] + tint[1] + tint[0];
+    colorSum = color[2] + color[1] + color[0];
+
+    return (byte)( ( colorSum * 255 + 127 ) / tintSum );
 }
 
 
@@ -3552,7 +3566,7 @@ void Tris_CopyVertexToDrawVert( BspDrawVert_t *dst, byte *layerData, const TriVe
     Vec3Copy( src->smoothNormal, dst->normal );
     Vec2Copy( src->texCoord[0],  dst->texCoord );
     Vec2Copy( src->lmapCoord,    dst->lmapCoord );
-    PackVertexColor( src->color, dst->color );
+    Byte4Copy( src->color, dst->color );
 
     for ( layer = 1; layer < (unsigned int)layerCount; layer++ )
         Vec2Copy( src->texCoord[layer], (float *)( layerData + ( layer - 1 ) * 8 ) );
@@ -5884,7 +5898,7 @@ void Tris_ModulateVertexColor( const DrawSurf_t *ds, const byte rgb[3], byte alp
     }
     else
     {
-        PackVertexColor( rgb, out );
+        Byte4Copy( rgb, out );
         out[3] = alpha;
     }
 }

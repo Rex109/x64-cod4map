@@ -808,10 +808,10 @@ static bool LmapSameChart( TriSurf_t *surf0, TriSurf_t *surf1, const vec2_t lmap
         return false;
     }
 
-    if ( !Vec4Compare( surf0->transient.lmap->vecs[0], surf1->transient.lmap->vecs[0] ) )
+    if ( !Vec3Compare( surf0->transient.lmap->vecs[0], surf1->transient.lmap->vecs[0] ) )
         return false;
 
-    if ( !Vec4Compare( surf0->transient.lmap->vecs[1], surf1->transient.lmap->vecs[1] ) )
+    if ( !Vec3Compare( surf0->transient.lmap->vecs[1], surf1->transient.lmap->vecs[1] ) )
         return false;
 
     return true;

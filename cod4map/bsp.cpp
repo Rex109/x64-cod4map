@@ -258,7 +258,7 @@ float ParseSmoothAngle( const char *str, const char *optionName )
         {
             Com_Printf( "%s = %g\n", optionName, angle );
             radians   = angle * DEG2RAD;
-            threshold = cos( radians ) - EQUAL_EPSILON;
+            threshold = ( float )cos( radians ) - EQUAL_EPSILON;
             return I_fmax( 0.0f, threshold );
         }
 

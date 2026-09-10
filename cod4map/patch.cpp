@@ -618,7 +618,7 @@ static void SubdivideTerrain( Entity_t *entity, MeshVert_t *verts, int vertCount
             center = ( verts[i0].xyz[axis] + verts[i1].xyz[axis]
                        + verts[i2].xyz[axis] ) / 3.0f;
 
-            grid = ( int )floor( ( center - mins[axis] ) * splitStep );
+            grid = ( int )floor( ( float )( ( center - mins[axis] ) * splitStep ) );
 
             Assertx( grid >= 0 && grid < splitCount, "%s",
                      va( "%g %g %g -> %i", center, mins[axis], splitStep, grid ) );

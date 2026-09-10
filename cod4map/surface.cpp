@@ -271,8 +271,8 @@ void SubdivideDrawSurf( DrawSurf_t *surf, winding_t *w, float subdivisions )
         Vec3Clear( normal );
         Vec3Clear( point );
 
-        lo = ( int )( floor( mins[i] / subdivisions ) * subdivisions );
-        hi = ( int )( ceil ( maxs[i] / subdivisions ) * subdivisions );
+        lo = ( int )( floor( ( float )( mins[i] / subdivisions ) ) * subdivisions );
+        hi = ( int )( ceil ( ( float )( maxs[i] / subdivisions ) ) * subdivisions );
 
         point[i]  = ( float )lo + subdivisions;
         normal[i] = -1.0f;

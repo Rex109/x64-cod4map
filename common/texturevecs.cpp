@@ -129,7 +129,8 @@ void ExtractTextureVecs( const vec3_t planeNormal, float planeDist, vec4_t *texV
     scale[0] = SnapToGrid( scale[0], 8.0f, 0.001f );
     scale[1] = SnapToGrid( scale[1], 8.0f, 0.001f );
 
-    *rotate = ( float )atan2( texVecs[0][t] * pvecs[0][s], texVecs[0][s] * pvecs[0][s] ) * RAD2DEG;
+    *rotate = ( float )atan2( ( float )( texVecs[0][t] * pvecs[0][s] ),
+                              ( float )( texVecs[0][s] * pvecs[0][s] ) ) * RAD2DEG;
     *rotate = SnapToGrid( *rotate, 4.0f, 0.005f );
 
     shift[0] = -texVecs[0][3] * scale[0];

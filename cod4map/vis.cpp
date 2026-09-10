@@ -1226,7 +1226,7 @@ stackWinding_t *ClipToSeperators( const stackWinding_t *source, const stackWindi
             if ( length < VIS_ON_EPSILON )
                 continue;
 
-            length = 1.0f / sqrt( length );
+            length = 1.0f / ( float )sqrt( length );
             plane[0] *= length;
             plane[1] *= length;
             plane[2] *= length;
@@ -1939,7 +1939,7 @@ int AddSeperators( const stackWinding_t *source, const stackWinding_t *pass,
             if ( length < VIS_ON_EPSILON )
                 continue;
 
-            length = 1.0f / sqrt( length );
+            length = 1.0f / ( float )sqrt( length );
             plane[0] *= length;
             plane[1] *= length;
             plane[2] *= length;

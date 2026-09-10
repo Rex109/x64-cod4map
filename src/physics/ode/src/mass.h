@@ -1,4 +1,4 @@
-/* Original: ..\src\physics\ode\src\mass.cpp (upstream: ode\include\ode\mass.h). */
+/* Original: ..\src\physics\ode\src\mass.cpp */
 
 #ifndef ODE_MASS_H
 #define ODE_MASS_H

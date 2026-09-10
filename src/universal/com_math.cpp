@@ -3073,7 +3073,7 @@ bool BoundsDistSqExceeds( const vec3_t mins, const vec3_t maxs, const vec3_t poi
 /* Q_rint  0x00473ee0 */
 float Q_rint( float value )
 {
-    return floor( value + 0.5f );
+    return floor( ( float )( value + 0.5f ) );
 }
 
 /* Vec3MaxNormalize  0x00473f10 */

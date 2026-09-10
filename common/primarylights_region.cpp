@@ -1035,8 +1035,8 @@ static unsigned int AddSpotConeAxes( const PrimaryLightInfo_t *light, float *axe
     if ( light->cosHalfFov < 0.1f )
         return axisCount;
 
-    scale = cos( PI / 8.0f ) *
-            ( light->cosHalfFov / sqrt( 1.0f - light->cosHalfFov * light->cosHalfFov ) );
+    scale = ( float )cos( PI / 8.0f ) *
+            ( light->cosHalfFov / ( float )sqrt( ( float )( 1.0f - light->cosHalfFov * light->cosHalfFov ) ) );
 
     Vec3Scale( light->dir, -scale, apex );
     MakeNormalVectors2( light->dir, up, right );
