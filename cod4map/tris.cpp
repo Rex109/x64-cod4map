@@ -81,6 +81,7 @@ byte g_combineLayeredMaterials  = 1;        /* 0x0052969d */
 extern int reorderTris;                     /* 0x00529074 */
 
 extern float sampleScale;                   /* 0x0052907c */
+extern int   splitLightmaps;                /* -splitLightmaps */
 
 extern float defaultTessSize;               /* 0x123ce900 */
 
@@ -153,6 +154,7 @@ void  Tris_ComputeWindingBounds( void );
 void  Tris_CoalesceWindings( void );
 void  Tris_RemoveOccludedFragments( void );
 void  Tris_ValidateSurfaceLightmap( TriSurf_t *surf, bool isTarget );
+void  Tris_CheckLightmapSize( TriSurf_t *surf, bool isTarget );
 void  Tris_SurfaceMapError( int severity, TriSurf_t *surf, const char *message );
 void  Tris_DrawSurfMapError( int severity, TriSurf_t *surf, const DrawSurf_t *ds, const char *message );
 bool  Tris_CheckTextureRepeats( TriSurf_t *surf, const TriSurfProps_t *props );
@@ -284,6 +286,8 @@ bool  Tris_MergedLmapFits( const TriSurf_t *surf0, const TriSurf_t *surf1,
                            int start0, int start1, int dupCount );           /* 0x0044c320 */
 bool  Tris_MergedLmapExceeds( const intWinding_t *w0, const intWinding_t *w1,
                               const TriSurfProps_t *props );                 /* 0x0044bd40 */
+bool  Tris_MergedLightmapTooBig( const intWinding_t *w0, const intWinding_t *w1,
+                                 const TriSurfProps_t *props );
 bool  Tris_MergedLmapExceedsProps( const intWinding_t *w0, const intWinding_t *w1,
                                    const TriSurfProps_t *props );            /* 0x0044bdb0 */
 void  Tris_AddWindingLmapBounds( const intWinding_t *iw, const TriSurfProps_t *props,
@@ -1361,6 +1365,9 @@ void TriangulateEntity( Entity_t *e, Tree_t *tree )
     Tris_StartPhase( "splitting large windings" );
     Tris_SplitLargeWindings();
 
+    if ( splitLightmaps )
+        Tris_ForEachSurf( Tris_CheckLightmapSize, NULL );
+
     Tris_StartPhase( "merging into concave windings" );
     Tris_MergeIntoConcaveWindings();
 
@@ -1534,6 +1541,32 @@ void Tris_ValidateSurfaceLightmap( TriSurf_t *surf, bool isTarget )
         Tris_FreeSurface( surf );
         return;
     }
+
+    (void)lmapBounds;
+    (void)width;
+    (void)height;
+    (void)neededScale;
+
+    /* With -splitLightmaps a winding that is too big for one lightmap is not an error here:
+       Tris_SplitLargeWindings cuts it into pieces that fit, and Tris_CheckLightmapSize
+       reports whatever could not be cut. */
+    if ( !splitLightmaps )
+        Tris_CheckLightmapSize( surf, isTarget );
+}
+
+
+/* Tris_CheckLightmapSize: a surface that still needs more than one lightmap page is an error */
+void Tris_CheckLightmapSize( TriSurf_t *surf, bool isTarget )
+{
+    vec2_t lmapBounds[2];
+    int    width;
+    int    height;
+    float  neededScale;
+
+    (void)isTarget;
+
+    if ( !TrisLmapWantsLightmap( surf->props ) )
+        return;
 
     LmapSurfBounds2D( surf->props->lmapVecs, surf->w, lmapBounds );
 
@@ -1836,12 +1869,23 @@ void Tris_FindSunShadowCasters( void )
 
 
 /* Tris_SplitLargeWindings  0x00441c30 */
+/* Cuts every winding that is too big for one lightmap into pieces that fit.  The pieces
+   are made here, before concave merging and t-junction fixing, so those later steps tidy
+   up the new edges, and so the surface only has to be convex. */
+static int tris_lightmapSplitCount;
+
 void Tris_SplitLargeWindings( void )
 {
     int        listCount;
     int        listIndex;
     TriSurf_t *surf;
     TriSurf_t *next;
+
+    tris_lightmapSplitCount = 0;
+
+    /* Off unless -splitLightmaps is given */
+    if ( !splitLightmaps )
+        return;
 
     listCount = Tris_GetSurfListCount();
     for ( listIndex = 0; listIndex < listCount; listIndex++ )
@@ -1852,11 +1896,61 @@ void Tris_SplitLargeWindings( void )
             Tris_SplitLargeWinding( surf, &triGlobSurfLists[listIndex] );
         }
     }
+
+    if ( tris_lightmapSplitCount )
+    {
+        Com_Printf( "split %i windings that were too big for one lightmap\n",
+                    tris_lightmapSplitCount );
+
+        /* The new pieces have no bounds yet */
+        Tris_ComputeWindingBounds();
+    }
+}
+
+
+/* How many texels past one lightmap page the winding is (0 if it fits), for the worst of the
+   props it carries */
+static int Tris_LightmapOverflow( const winding_t *w, const TriSurfProps_t *props )
+{
+    const CoalesceNode_t *chain;
+    vec2_t                bounds[2];
+    int                   over;
+    int                   worst;
+
+    if ( props->coalesceChain )
+    {
+        worst = 0;
+
+        for ( chain = props->coalesceChain; chain; chain = chain->next )
+        {
+            over = Tris_LightmapOverflow( w, chain->props );
+
+            if ( over > worst )
+                worst = over;
+        }
+
+        return worst;
+    }
+
+    if ( !TrisLmapWantsLightmap( props ) )
+        return 0;
+
+    LmapSurfBounds2D( props->lmapVecs, w, bounds );
+
+    worst = LightmapSizeForRange( bounds[0][0], bounds[1][0] ) - LMAP_WIDTH_MIN;
+    over  = LightmapSizeForRange( bounds[0][1], bounds[1][1] ) - LMAP_HEIGHT_MIN;
+
+    if ( over > worst )
+        worst = over;
+
+    return worst > 0 ? worst : 0;
 }
 
 
 /* Tris_SplitLargeWinding  0x00441ca0 */
-void Tris_SplitLargeWinding( TriSurf_t *surf, TriSurf_t **listHead )
+#define TRIS_LMAP_SPLIT_MAX_DEPTH   48
+
+static void Tris_SplitLargeWindingDepth( TriSurf_t *surf, TriSurf_t **listHead, int depth )
 {
     TriSurfProps_t *props;
     vec4_t          splitPlane;
@@ -1865,22 +1959,56 @@ void Tris_SplitLargeWinding( TriSurf_t *surf, TriSurf_t **listHead )
     TriSurf_t      *frontSurf;
     TriSurf_t      *backSurf;
 
+    if ( depth >= TRIS_LMAP_SPLIT_MAX_DEPTH )
+        return;
+
     props = surf->props;
+
+    /* Only windings without holes: holes appear later, when windings are merged */
+    if ( surf->holeCount )
+        return;
+
     if ( !Tris_FindLightmapSplitPlane( surf->w, props, splitPlane ) )
         return;
 
     ClipWindingEpsilon( surf->w, splitPlane, splitPlane[3], 0.1f, &front, &back, 0 );
 
-    Assert( front );
-    Assert( back );
+    /* A plane that doesn't really cut the winding can't help: leave it to be reported */
+    if ( !front || !back )
+    {
+        if ( front )
+            FreeWinding( front );
+        if ( back )
+            FreeWinding( back );
+        return;
+    }
+
+    /* Nor can a cut that leaves both halves as big as the whole (a badly angled surface) */
+    {
+        int parentOver = Tris_LightmapOverflow( surf->w, props );
+
+        if ( Tris_LightmapOverflow( front, props ) >= parentOver
+             && Tris_LightmapOverflow( back, props ) >= parentOver )
+        {
+            FreeWinding( front );
+            FreeWinding( back );
+            return;
+        }
+    }
 
     Tris_FreeSurface( surf );
+    tris_lightmapSplitCount++;
 
     frontSurf = PrependTriSurf( front, props, listHead );
-    Tris_SplitLargeWinding( frontSurf, listHead );
+    Tris_SplitLargeWindingDepth( frontSurf, listHead, depth + 1 );
 
     backSurf = PrependTriSurf( back, props, listHead );
-    Tris_SplitLargeWinding( backSurf, listHead );
+    Tris_SplitLargeWindingDepth( backSurf, listHead, depth + 1 );
+}
+
+void Tris_SplitLargeWinding( TriSurf_t *surf, TriSurf_t **listHead )
+{
+    Tris_SplitLargeWindingDepth( surf, listHead, 0 );
 }
 
 
@@ -1938,6 +2066,7 @@ static void Tris_LmapTexelExtent( const winding_t *w, const TriSurfProps_t *prop
 bool Tris_FindLightmapSplitPlane( const winding_t *w, const TriSurfProps_t *props, vec4_t outPlane )
 {
     const CoalesceNode_t *chain;
+    vec2_t lmapBounds[2];
     int    extent[2];
     int    over[2];
     int    axisIndex;
@@ -1963,9 +2092,17 @@ bool Tris_FindLightmapSplitPlane( const winding_t *w, const TriSurfProps_t *prop
         return false;
     }
 
-    Tris_LmapTexelExtent( w, props, extent );
-    over[0] = extent[0] - 2 * Tris_LmapTexelLimitS( props );
-    over[1] = extent[1] - 2 * Tris_LmapTexelLimitT( props );
+    /* The winding has to fit one lightmap page.  Measure it the way the lightmap is placed
+       (LmapPlaceGroup), so a winding is split exactly when it would otherwise fail there. */
+    if ( !TrisLmapWantsLightmap( props ) )
+        return false;
+
+    LmapSurfBounds2D( props->lmapVecs, w, lmapBounds );
+    extent[0] = LightmapSizeForRange( lmapBounds[0][0], lmapBounds[1][0] );
+    extent[1] = LightmapSizeForRange( lmapBounds[0][1], lmapBounds[1][1] );
+
+    over[0] = extent[0] - LMAP_WIDTH_MIN;
+    over[1] = extent[1] - LMAP_HEIGHT_MIN;
 
     if ( over[0] < 1 && over[1] < 1 )
         return false;
@@ -5751,7 +5888,55 @@ bool Tris_MergedLmapFits( const TriSurf_t *surf0, const TriSurf_t *surf1,
     if ( Tris_MergedLmapExceeds( w1, w0, surf1->props ) )
         return false;
 
+    /* Two windings only join if the result still fits one lightmap page; otherwise a floor
+       made of many faces can become one winding too big to place */
+    if ( splitLightmaps )
+    {
+        if ( Tris_MergedLightmapTooBig( w0, w1, surf0->props ) )
+            return false;
+
+        if ( Tris_MergedLightmapTooBig( w1, w0, surf1->props ) )
+            return false;
+    }
+
     return true;
+}
+
+
+/* Tris_MergedLightmapTooBig: would these two windings together need more than one lightmap
+   page?  Measured the same way LmapPlaceGroup does. */
+bool Tris_MergedLightmapTooBig( const intWinding_t *w0, const intWinding_t *w1,
+                                const TriSurfProps_t *props )
+{
+    vec2_t       mins;
+    vec2_t       maxs;
+    vec2_t       lmapCoord;
+    int          i;
+    const float *pt;
+
+    if ( !TrisLmapWantsLightmap( props ) )
+        return false;
+
+    ClearBounds2D( mins, maxs );
+
+    for ( i = 0; i < w0->ptCount; i++ )
+    {
+        pt = MergeVertForIndex( w0->pts[i] );
+        lmapCoord[0] = Vec3Dot( pt, props->lmapVecs[0] ) + props->lmapVecs[0][3];
+        lmapCoord[1] = Vec3Dot( pt, props->lmapVecs[1] ) + props->lmapVecs[1][3];
+        AddPointToBounds2D( lmapCoord, mins, maxs );
+    }
+
+    for ( i = 0; i < w1->ptCount; i++ )
+    {
+        pt = MergeVertForIndex( w1->pts[i] );
+        lmapCoord[0] = Vec3Dot( pt, props->lmapVecs[0] ) + props->lmapVecs[0][3];
+        lmapCoord[1] = Vec3Dot( pt, props->lmapVecs[1] ) + props->lmapVecs[1][3];
+        AddPointToBounds2D( lmapCoord, mins, maxs );
+    }
+
+    return LightmapSizeForRange( mins[0], maxs[0] ) > LMAP_WIDTH_MIN
+        || LightmapSizeForRange( mins[1], maxs[1] ) > LMAP_HEIGHT_MIN;
 }
 
 

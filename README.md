@@ -16,11 +16,12 @@ A 64-bit fork of the `cod4map.exe` source reconstruction, the BSP compiler from 
 
 ## ✨ What this fork adds
 
+- 📐 **Automatic lightmap splitting** (`-splitLightmaps`): a surface too big for one 512x512 lightmap is cut into pieces that fit, instead of stopping with "Lightmap ... is larger than 512x512"
 - 🧠 **64-bit build**, so big maps stop running out of the 32-bit address space
 - 🩺 **Crash reports** that name the function and line instead of silently closing
 - 🛠️ **Premake build**, with a one-click `generate-buildfiles_vs26.bat`
 
-It is the companion of [x64-cod4rad](https://github.com/Rex109/x64-cod4rad), the lighting compiler, and is built the same way. The executable is still called `cod4map.exe`, so it can replace the one in your mod tools.
+The executable is still called `cod4map.exe`, so it can replace the one in your mod tools.
 
 ## Build
 
@@ -52,6 +53,17 @@ cod4map -platform pc -loadFrom map_source\<mapname>.map raw\maps\mp\<mapname>
 ```
 
 Run it from the [Call of Duty 4 mod tools](https://github.com/promod/CoD4-Mod-Tools) directory.
+
+### Big surfaces and lightmaps
+
+A lightmap page is 512x512 texels, so a surface that needs more than that stops the compile ("Lightmap 633x523 is larger than 512x512; need a sampleScale of at least 1.3"). Add **`-splitLightmaps`** and:
+
+- A face that is too big is **cut into pieces** along planes, each piece getting its own lightmap area at the **same resolution**. The tool prints `split N windings that were too big for one lightmap`.
+- Faces are no longer **merged** into one big surface if the result wouldn't fit a page.
+- It is **off unless you give the option**, and only surfaces that don't fit are affected, so maps that compiled before come out the same either way.
+- If a surface still can't be cut (for example a very oddly angled one), the old error appears, with the `sampleScale` hint.
+
+The cuts add some extra edges, so very large surfaces cost a few more triangles. The lightmap still has a 31 page limit in total.
 
 ### Crash reports
 

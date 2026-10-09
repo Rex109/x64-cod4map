@@ -68,6 +68,7 @@ int   noCurveBrushes;                       /* 0x00a34bc0 */
 char  g_convertPath[MAX_OS_PATH];           /* 0x00a34bc8 */
 int   fulldetail;                           /* 0x00a34fc8 */
 int   nowater;                              /* 0x00a34fcc */
+int   splitLightmaps;                       /* -splitLightmaps: cut surfaces too big for one lightmap */
 int   verboseEntities;                      /* 0x00a34fd0 */
 int   g_onlyEnts;                           /* 0x00a34fd4 */
 int   nodetail;                             /* 0x00a34fd8 */
@@ -356,6 +357,13 @@ int Opt_sampleScale( int argc, const char **argv )
     return 2;
 }
 
+int Opt_SplitLightmaps( void )
+{
+    Com_Printf( "splitLightmaps = true\n" );
+    splitLightmaps = 1;
+    return 1;
+}
+
 int Opt_NoWater( void )
 {
     Com_Printf( "nowater = true\n" );
@@ -559,7 +567,7 @@ int Opt_XenonToPc( void )
 }
 
 
-OptionEntry_t optionsTable[29] =
+OptionEntry_t optionsTable[30] =
 {
     { "-platform",              "Required if not copying a bsp between platforms; specifies target platform", ( optionHandler_t )Opt_platform               },
     { "-pcToXenon",             "Copies a PC bsp to a Xenon bsp",                                             ( optionHandler_t )Opt_PcToXenon              },
@@ -568,6 +576,7 @@ OptionEntry_t optionsTable[29] =
     { "-verboseEntities",       "Includes verbose messages for submodels if '-v' is given",                   ( optionHandler_t )Opt_VerboseEntities        },
     { "-onlyEnts",              "Compile doesn't touch triggers, geometry, or lighting",                      ( optionHandler_t )Opt_OnlyEnts               },
     { "-sampleScale",           "Scales all lightmaps; 2 doubles pixel size, 0.5 halves it",                  ( optionHandler_t )Opt_sampleScale            },
+    { "-splitLightmaps",        "Cuts surfaces too big for one 512x512 lightmap into pieces that fit",        ( optionHandler_t )Opt_SplitLightmaps         },
     { "-blockSize",             "Grid size for regular BSP splits; 0 uses largest possible",                  ( optionHandler_t )Opt_blockSize              },
     { "-subdivisions",          "Divides all geometry on a grid; only works for small maps",                  ( optionHandler_t )Opt_subdivisions           },
     { "-noSubdivide",           "Ignores the 'tessSize' setting in all materials",                            ( optionHandler_t )Opt_NoSubdivide            },

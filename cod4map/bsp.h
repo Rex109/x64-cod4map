@@ -15,7 +15,7 @@ typedef struct
     optionHandler_t  func;          /* +0x08 */
 } OptionEntry_t;                    /* sizeof == 0x0c */
 
-extern OptionEntry_t optionsTable[29];      /* 0x004f3c60 */
+extern OptionEntry_t optionsTable[30];      /* 0x004f3c60 */
 
 #define TEST_EXPAND_NONE    0
 #define TEST_EXPAND_PLAYER  1
@@ -25,6 +25,7 @@ extern int   noCurveBrushes;                    /* 0x00a34bc0 */
 extern char  g_convertPath[MAX_OS_PATH];        /* 0x00a34bc8 */
 extern int   fulldetail;                        /* 0x00a34fc8 */
 extern int   nowater;                           /* 0x00a34fcc */
+extern int   splitLightmaps;                    /* -splitLightmaps */
 extern int   verboseEntities;                   /* 0x00a34fd0 */
 extern int   g_onlyEnts;                        /* 0x00a34fd4 */
 extern int   nodetail;                          /* 0x00a34fd8 */
