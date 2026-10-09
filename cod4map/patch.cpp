@@ -814,6 +814,23 @@ void ExpandBounds( float dist, vec3_t mins, vec3_t maxs )
 }
 
 
+#ifdef _WIN64
+/* Same ordering the 32-bit build gets from ( ( int )a - ( int )b ) >> 6, without losing
+   the top half of the pointers */
+static int PatchPointerOrder( const void *a, const void *b )
+{
+    __int64 order = ( ( __int64 )( size_t )a - ( __int64 )( size_t )b ) >> 6;
+
+    if ( order > 0x7fffffff )
+        order = 0x7fffffff;
+
+    if ( order < -0x7fffffff )
+        order = -0x7fffffff;
+
+    return ( int )order;
+}
+#endif
+
 /* CompareTerrainPatches  0x0042a890 */
 static int CompareTerrainPatches( const void *a, const void *b )
 {
@@ -832,12 +849,20 @@ static int CompareTerrainPatches( const void *a, const void *b )
 
     if ( pa->material != pb->material )
     {
+#ifdef _WIN64
+        return PatchPointerOrder( pa->material, pb->material );
+#else
         return ( int )( ( ( int )pa->material - ( int )pb->material ) >> 6 );
+#endif
     }
 
     if ( pa->lmapMaterial != pb->lmapMaterial )
     {
+#ifdef _WIN64
+        return PatchPointerOrder( pa->lmapMaterial, pb->lmapMaterial );
+#else
         return ( int )( ( ( int )pa->lmapMaterial - ( int )pb->lmapMaterial ) >> 6 );
+#endif
     }
 
     return pa->cullGroup - pb->cullGroup;

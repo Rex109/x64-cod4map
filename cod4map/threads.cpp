@@ -147,7 +147,7 @@ void RunThreadsOn( int workcnt, qboolean showpacifier, void ( *func )( int ) )
                 NULL,
                 0,
                 ( LPTHREAD_START_ROUTINE )func,
-                ( LPVOID )i,
+                ( LPVOID )( size_t )i,
                 0,
                 &threadid[i] );
         }

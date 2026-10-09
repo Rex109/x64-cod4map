@@ -2788,8 +2788,8 @@ bool Tris_TriSortsBefore( const Tri_t &a, const Tri_t &b )
 {
     if ( a.visGroupIndex != b.visGroupIndex )
         return a.visGroupIndex < b.visGroupIndex;
-    if ( (unsigned int)a.lyrMtlDesc != (unsigned int)b.lyrMtlDesc )
-        return (unsigned int)a.lyrMtlDesc < (unsigned int)b.lyrMtlDesc;
+    if ( (size_t)a.lyrMtlDesc != (size_t)b.lyrMtlDesc )
+        return (size_t)a.lyrMtlDesc < (size_t)b.lyrMtlDesc;
     if ( a.reflectionProbeIndex != b.reflectionProbeIndex )
         return a.reflectionProbeIndex < b.reflectionProbeIndex;
     if ( a.primaryLightIndex != b.primaryLightIndex )

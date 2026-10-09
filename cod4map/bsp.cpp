@@ -62,6 +62,7 @@ extern void  CopyReflectionProbeLumpPreV12( BspHeader_t *header );          /* 0
 #include "map_reflection_probe.h"
 
 #include "primarylights.h"
+#include "crashlog.h"
 
 int   noCurveBrushes;                       /* 0x00a34bc0 */
 char  g_convertPath[MAX_OS_PATH];           /* 0x00a34bc8 */
@@ -974,6 +975,8 @@ int main( int argc, const char **argv )
     double startTime;
     double endTime;
     char   path[MAX_OS_PATH];
+
+    CrashLog_Install();
 
     Com_Printf( "CoD4Map v1.1 (c) 2002 Id Software Inc. / Infinity Ward\n" );
     BSP_InitErrorHandler();

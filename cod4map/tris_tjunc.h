@@ -37,7 +37,7 @@ typedef struct tjuncPoint_s
     struct tjuncPoint_s *next;      /* +0x18 */
 } tjuncPoint_t;
 
-typedef struct
+typedef struct edgeLine_s
 {
     vec3_t       normal0;       /* +0x00 */
     float        dist0;         /* +0x0c */
@@ -46,8 +46,8 @@ typedef struct
     vec3_t       dir;           /* +0x20 */
     vec3_t       origin;        /* +0x2c */
     float        epsilonSq;     /* +0x38 */
-    int          axisBucketNext;/* +0x3c */
-    int          dirBucketNext; /* +0x40 */
+    struct edgeLine_s *axisBucketNext;  /* +0x3c (an int in the original; it holds a pointer) */
+    struct edgeLine_s *dirBucketNext;   /* +0x40 */
     tjuncPoint_t head;          /* +0x44 */
 } edgeLine_t;
 

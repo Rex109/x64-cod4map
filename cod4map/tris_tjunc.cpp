@@ -20,14 +20,30 @@ extern int  GridTree_CountOverlapping( const vec3_t mins, const vec3_t maxs,
 tjuncGlob_t tjuncGlob;      /* 0x2b8209dc */
 
 
+/* One block of memory holds the lines, the axis buckets, the points and the direction
+   buckets one after another.  The offsets were 0x0, 0x600000, 0x630000 and 0xd30000 in the
+   32-bit build; they follow from the sizes so they also hold with 8 byte pointers. */
+#define TJUNC_AXIS_OFFSET   ( MAX_EDGE_LINES * sizeof( edgeLine_t ) )
+#define TJUNC_POINTS_OFFSET ( TJUNC_AXIS_OFFSET \
+                              + 3 * TJUNC_AXIS_BUCKETS * TJUNC_AXIS_BUCKETS * sizeof( edgeLine_t * ) )
+#define TJUNC_DIR_OFFSET    ( TJUNC_POINTS_OFFSET + MAX_TJUNC_POINTS * sizeof( tjuncPoint_t ) )
+
 #define TJUNC_LINES         ( ( edgeLine_t * )( ( byte * )tjuncGlob.mem + 0x000000 ) )
 #define TJUNC_AXIS_BUCKET( axis, t, s ) \
-    ( *( edgeLine_t ** )( ( byte * )tjuncGlob.mem + 0x600000 + \
-                          ( axis ) * 0x10000 + ( t ) * 0x200 + ( s ) * 4 ) )
-#define TJUNC_POINTS        ( ( tjuncPoint_t * )( ( byte * )tjuncGlob.mem + 0x630000 ) )
+    ( *( edgeLine_t ** )( ( byte * )tjuncGlob.mem + TJUNC_AXIS_OFFSET + \
+                          ( ( ( axis ) * TJUNC_AXIS_BUCKETS + ( t ) ) * TJUNC_AXIS_BUCKETS + ( s ) ) \
+                          * sizeof( edgeLine_t * ) ) )
+#define TJUNC_POINTS        ( ( tjuncPoint_t * )( ( byte * )tjuncGlob.mem + TJUNC_POINTS_OFFSET ) )
 #define TJUNC_DIR_BUCKET( face, t, s ) \
-    ( *( edgeLine_t ** )( ( byte * )tjuncGlob.mem + 0xd30000 + \
-                          ( face ) * 0x100 + ( t ) * 0x20 + ( s ) * 4 ) )
+    ( *( edgeLine_t ** )( ( byte * )tjuncGlob.mem + TJUNC_DIR_OFFSET + \
+                          ( ( ( face ) * TJUNC_DIR_BUCKETS + ( t ) ) * TJUNC_DIR_BUCKETS + ( s ) ) \
+                          * sizeof( edgeLine_t * ) ) )
+
+#ifndef _WIN64
+typedef char tjunc_offsets_match_32bit_layout[ ( TJUNC_AXIS_OFFSET == 0x600000
+                                                 && TJUNC_POINTS_OFFSET == 0x630000
+                                                 && TJUNC_DIR_OFFSET == 0xd30000 ) ? 1 : -1 ];
+#endif
 
 
 static void TJuncAddEdge( const vec3_t v0, const vec3_t v1 );
@@ -253,7 +269,7 @@ static void TJunc_AddEdgeLine( const vec3_t v0, const vec3_t v1, int axis, float
     TJuncDirBucket( dir, &face, &s, &t );
     s = s >> 1;
     t = t >> 1;
-    line->dirBucketNext = ( int )TJUNC_DIR_BUCKET( face, t, s );
+    line->dirBucketNext = TJUNC_DIR_BUCKET( face, t, s );
     TJUNC_DIR_BUCKET( face, t, s ) = line;
 
     TJuncAddPointsToLine( v0, v1, line, epsilonSq );
@@ -263,7 +279,7 @@ static void TJunc_AddEdgeLine( const vec3_t v0, const vec3_t v1, int axis, float
     if ( axis >= 0 )
     {
         bucket = TJuncAxisBucket( v0, axis );
-        line->axisBucketNext = ( int )*bucket;
+        line->axisBucketNext = *bucket;
         *bucket = line;
     }
 }
@@ -840,11 +856,11 @@ static void TJuncClearBuckets( void )
 {
     if ( tjuncGlob.useAxisBuckets )
     {
-        memset( ( byte * )tjuncGlob.mem + 0x600000, 0,
+        memset( ( byte * )tjuncGlob.mem + TJUNC_AXIS_OFFSET, 0,
                 3 * TJUNC_AXIS_BUCKETS * TJUNC_AXIS_BUCKETS * sizeof( edgeLine_t * ) );
     }
 
-    memset( ( byte * )tjuncGlob.mem + 0xd30000, 0,
+    memset( ( byte * )tjuncGlob.mem + TJUNC_DIR_OFFSET, 0,
             3 * TJUNC_DIR_BUCKETS * TJUNC_DIR_BUCKETS * sizeof( edgeLine_t * ) );
 }
 

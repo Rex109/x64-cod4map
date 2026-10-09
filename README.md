@@ -1,21 +1,49 @@
-# cod4map
+[![License](https://img.shields.io/badge/license-MIT-blue)](https://creativecommons.org/licenses/by-nc/4.0/)
+[![Personal Discord](https://img.shields.io/discord/953653773962739793?color=%237289DA&label=Personal%20Discord&logo=discord&logoColor=%23FFFFFF)](https://discord.gg/QDYk75vBBk)
+[![ManyAsset](https://img.shields.io/discord/585171589750849538?color=%23FF8711&label=ManyAsset&logo=discord&logoColor=%23FFFFFF)](https://discord.gg/v2TWkeR)
 
-A source reconstruction of `cod4map.exe`, the BSP compiler from the Call of Duty 4 mod tools, recovered from the shipped 2007 binary.
+# x64-CoD4Map
+<img width="1820" height="396" alt="logo" src="https://github.com/user-attachments/assets/10edfe8f-ade1-4058-8f39-e3ea0f991042"/>
 
-## Requirements
+*<p align="center"><sub>Let there be light!</sub></p>*
+<br>
+A 64-bit fork of the `cod4map.exe` source reconstruction, the BSP compiler from the Call of Duty 4 mod tools (originally recovered from the shipped 2007 binary).
+<br>
 
-- Visual Studio 2019 or later with the **x86 (32-bit) C++ toolset** installed
-  (Desktop development with C++ → "MSVC ... C++ x64/x86 build tools")
-- CMake 3.21 or later
+> [!WARNING]
+> **This project was made entirely with AI.**
+> Every change in this fork, the 64-bit port, the crash reports and the build files, was written by an AI model, and the underlying code is a machine-assisted reconstruction of a decompiled binary. It has not been reviewed the way real software should be, and the 64-bit build in particular has not been checked against the original on real maps. **Do not treat it as an example of good programming**, and do not copy its patterns into code you care about. Keep your map files backed up, and compare the output against the original tool if the result matters.
+
+## ✨ What this fork adds
+
+- 🧠 **64-bit build**, so big maps stop running out of the 32-bit address space
+- 🩺 **Crash reports** that name the function and line instead of silently closing
+- 🛠️ **Premake build**, with a one-click `generate-buildfiles_vs26.bat`
+
+It is the companion of [x64-cod4rad](https://github.com/Rex109/x64-cod4rad), the lighting compiler, and is built the same way. The executable is still called `cod4map.exe`, so it can replace the one in your mod tools.
 
 ## Build
 
+Requirements:
+
+- Visual Studio 2026 with the C++ toolset for the platform you want: **x64** for the 64-bit build, **x86** for the byte-exact Win32 build
+- Premake 5 (bundled as `tools\premake5.exe`)
+
 ```
-cmake -B build -A Win32
-cmake --build build --config Release
+generate-buildfiles_vs26.bat
 ```
 
-The executable is written to `bin\cod4map.exe`.
+Then open `build\cod4map.slnx` in Visual Studio and build the platform you want, or from a command line:
+
+```
+msbuild build\cod4map.slnx /p:Configuration=Release /p:Platform=x64
+msbuild build\cod4map.slnx /p:Configuration=Release /p:Platform=Win32
+```
+
+| Platform | Output | Notes |
+| --- | --- | --- |
+| x64 | `bin\x64\cod4map.exe` | No 32-bit memory limit. Uses SSE2, so it is **not byte-exact** with the original. |
+| Win32 | `bin\cod4map.exe` | Byte-exact with the original (see below). Limited to the 32-bit address space. |
 
 ## Usage
 
@@ -25,8 +53,10 @@ cod4map -platform pc -loadFrom map_source\<mapname>.map raw\maps\mp\<mapname>
 
 Run it from the [Call of Duty 4 mod tools](https://github.com/promod/CoD4-Mod-Tools) directory.
 
+### Crash reports
+
+If the program crashes, it prints the exception, the function and source line, and a call stack, and writes the same to `cod4map_crash.txt` in the current directory. Keep `cod4map.pdb` next to the exe to get names.
+
 ## Notes
 
-The build uses `/arch:IA32 /fp:precise` on purpose: the original is an x87
-build, and SSE2 code generation changes floating-point results and therefore
-the output bytes.
+The Win32 build uses `/arch:IA32 /fp:precise` on purpose: the original is an x87 build, and SSE2 code generation changes floating-point results and therefore the output bytes. The x64 build cannot do this, which is why it is not byte-exact.

@@ -15,11 +15,14 @@
 
 extern const char *StringFromOffset( const void *base );            /* 0x004053a0 */
 
+#ifndef _WIN64
+/* These describe the 32-bit binary; the structs hold pointers, so they are bigger on x64 */
 typedef char brush_static_assert_side[ sizeof( side_t )  == 0x78 ? 1 : -1 ];
 typedef char brush_static_assert_hdr [ BRUSH_HEADER_SIZE == 0x54 ? 1 : -1 ];
 typedef char brush_static_assert_node[ sizeof( Node_t )  == 0x6c ? 1 : -1 ];
 typedef char brush_static_assert_tree[ sizeof( Tree_t )  == 0x88 ? 1 : -1 ];
 typedef char brush_static_assert_pt  [ sizeof( brushPointCapsule_t ) == 0x50 ? 1 : -1 ];
+#endif
 
 
 int g_removedBrushSides;                        /* 0x00534bac */
