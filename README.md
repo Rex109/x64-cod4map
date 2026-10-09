@@ -12,7 +12,7 @@ A 64-bit fork of the `cod4map.exe` source reconstruction, the BSP compiler from 
 
 > [!WARNING]
 > **This project was made entirely with AI.**
-> Every change in this fork, the 64-bit port, the crash reports and the build files, was written by an AI model, and the underlying code is a machine-assisted reconstruction of a decompiled binary. It has not been reviewed the way real software should be, and the 64-bit build in particular has not been checked against the original on real maps. **Do not treat it as an example of good programming**, and do not copy its patterns into code you care about.
+> Every change in this fork, the 64-bit port, the crash reports and the build files, was written by an AI model, and the underlying code is a machine-assisted reconstruction of a decompiled binary. It works on the maps it has been tried on, but it has not been reviewed the way real software should be. **Do not treat it as an example of good programming**, and do not copy its patterns into code you care about.
 
 ## ✨ What this fork adds
 
