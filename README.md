@@ -3,7 +3,7 @@
 [![ManyAsset](https://img.shields.io/discord/585171589750849538?color=%23FF8711&label=ManyAsset&logo=discord&logoColor=%23FFFFFF)](https://discord.gg/v2TWkeR)
 
 # x64-CoD4Map
-<img width="1820" height="396" alt="logo" src="https://github.com/user-attachments/assets/10edfe8f-ade1-4058-8f39-e3ea0f991042"/>
+<img width="1820" height="396" alt="logo2" src="https://github.com/user-attachments/assets/310d56b2-4c89-4439-8404-e25d94e14ddf" />
 
 *<p align="center"><sub>Let there be light!</sub></p>*
 <br>
